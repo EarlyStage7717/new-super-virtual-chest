@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "nsvirtualchest",
+  "version": "0.9.3TEST+mc1.21.11",
+  "name": "New Super Virtual Chest",
+  "description": "A server-side virtual chest mod with public/private permissions and delayed deletion.",
+  "authors": [
+    "cebctadet"
+  ],
+  "license": "ARR",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "afkx.nsvc.VirtualChestMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.15.5",
+    "minecraft": "1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
