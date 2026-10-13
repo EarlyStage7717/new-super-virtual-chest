@@ -1,65 +1,148 @@
 package afkx.nsvc;
 
-import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.minecraft.world.World;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.mojang.serialization.DataResult;
+import net.minecraft.inventory.SimpleInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.registry.RegistryWrapper;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.UUID;
 
-public class VirtualChestMod implements ModInitializer {
-    public static final String MOD_ID = "nsvc";
-    public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+public class VirtualChest extends SimpleInventory {
+    private final String name;
+    private final Size chestSize;
+    private UUID owner;         // 改为非 final
+    private boolean isPublic;   // 改为非 final
+    private boolean pendingDeletion;
+    private long deletionStartTime;
 
-    @Override
-    public void onInitialize() {
-        LOGGER.info("NS Virtual Chest (Server-side only) initializing...");
+    public enum Size {
+        SMALL(27),
+        LARGE(54);
 
-        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-            VirtualChestData.load(server);
-        });
+        private final int slots;
+        Size(int slots) { this.slots = slots; }
+        public int getSlots() { return slots; }
+        public String getDisplayName() { return this == SMALL ? "small" : "large"; }
+    }
 
-        // ---------- 修改：停止时调用 shutdown ----------
-        ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
-            VirtualChestData.shutdown(server);
-        });
+    public VirtualChest(String name, Size size) {
+        this(name, size, null, true);
+    }
 
-        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
-            VirtualChestCommand.register(dispatcher);
-        });
+    public VirtualChest(String name, Size size, UUID owner) {
+        this(name, size, owner, false);
+    }
 
-        ServerTickEvents.END_SERVER_TICK.register(server -> {
-            VirtualChestData data = VirtualChestData.getInstance();
-            long currentTime = server.getWorld(World.OVERWORLD).getTime();
+    private VirtualChest(String name, Size size, UUID owner, boolean isPublic) {
+        super(size.getSlots());
+        this.name = name;
+        this.chestSize = size;
+        this.owner = owner;
+        this.isPublic = isPublic;
+        this.pendingDeletion = false;
+        this.deletionStartTime = 0;
+    }
 
-            // 先收集要删除的箱子名，避免遍历时修改集合
-            List<String> toDelete = new ArrayList<>();
-            for (VirtualChest chest : data.getAllChests()) {
-                // 公共箱子：等待 3 游戏天后自动删除
-                if (chest.isPendingDeletion() && chest.isPublic()) {
-                    if (currentTime - chest.getDeletionStartTime() >= 72000L) {
-                        toDelete.add(chest.getName());
-                    }
-                }
-                // 私有箱子：确认超时（1 分钟）自动取消待删除
-                if (chest.isPendingDeletion() && !chest.isPublic()) {
-                    if (chest.getDeletionStartTime() > 0 && currentTime - chest.getDeletionStartTime() > 1200) {
-                        chest.setPendingDeletion(false, 0);
+    public String getName() { return name; }
+    public Size getChestSize() { return chestSize; }
+    public UUID getOwner() { return owner; }
+    public boolean isPublic() { return isPublic; }
+    public boolean isPendingDeletion() { return pendingDeletion; }
+    public long getDeletionStartTime() { return deletionStartTime; }
+
+    public void setPendingDeletion(boolean pending, long startTime) {
+        this.pendingDeletion = pending;
+        this.deletionStartTime = startTime;
+    }
+
+    /** 转移所有权：箱子变为私有，所有者改为新玩家 */
+    public void transferTo(UUID newOwner) {
+        this.owner = newOwner;
+        this.isPublic = false;
+    }
+
+    public NbtCompound writeNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registries) {
+        nbt.putString("name", name);
+        nbt.putString("size", chestSize.name());
+        nbt.putBoolean("public", isPublic);
+        if (owner != null) {
+            nbt.putString("owner", owner.toString());
+        }
+        nbt.putBoolean("pendingDeletion", pendingDeletion);
+        if (pendingDeletion) {
+            nbt.putLong("deletionStartTime", deletionStartTime);
+        }
+
+        NbtList items = new NbtList();
+        for (int i = 0; i < chestSize.getSlots(); i++) {
+            ItemStack stack = getStack(i);
+            if (!stack.isEmpty()) {
+                final int slot = i;
+                DataResult<NbtElement> result = ItemStack.OPTIONAL_CODEC.encodeStart(registries.getOps(NbtOps.INSTANCE), stack);
+                result.resultOrPartial(error -> {
+                    VirtualChestMod.LOGGER.error("编码物品失败，槽位 {}: {}", slot, error);
+                }).ifPresent(element -> {
+                    NbtCompound itemEntry = new NbtCompound();
+                    itemEntry.putInt("Slot", slot);
+                    itemEntry.put("Item", element);
+                    items.add(itemEntry);
+                });
+            }
+        }
+        nbt.put("Items", items);
+        return nbt;
+    }
+
+    public static VirtualChest fromNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registries) {
+        String name = nbt.getString("name").orElse("unknown");
+        String sizeStr = nbt.getString("size").orElse("LARGE");
+        boolean isPublic = nbt.getBoolean("public").orElse(false);
+
+        UUID owner = null;
+        String ownerStr = nbt.getString("owner").orElse(null);
+        if (ownerStr != null && !ownerStr.isEmpty()) {
+            try {
+                owner = UUID.fromString(ownerStr);
+            } catch (IllegalArgumentException e) {
+                VirtualChestMod.LOGGER.error("无效的 UUID 字符串: {}", ownerStr);
+            }
+        }
+
+        Size size;
+        try {
+            size = Size.valueOf(sizeStr);
+        } catch (IllegalArgumentException e) {
+            size = Size.LARGE;
+        }
+        VirtualChest chest = new VirtualChest(name, size, owner, isPublic);
+        chest.pendingDeletion = nbt.getBoolean("pendingDeletion").orElse(false);
+        if (chest.pendingDeletion) {
+            chest.deletionStartTime = nbt.getLong("deletionStartTime").orElse(0L);
+        }
+
+        NbtList items = nbt.getList("Items").orElse(new NbtList());
+        for (int i = 0; i < items.size(); i++) {
+            NbtCompound itemEntry = items.getCompound(i).orElse(null);
+            if (itemEntry != null) {
+                int slot = itemEntry.getInt("Slot").orElse(-1);
+                if (slot >= 0 && slot < chest.chestSize.getSlots()) {
+                    NbtElement itemElement = itemEntry.get("Item");
+                    if (itemElement != null) {
+                        DataResult<ItemStack> result = ItemStack.OPTIONAL_CODEC.parse(registries.getOps(NbtOps.INSTANCE), itemElement);
+                        var optionalStack = result.resultOrPartial(error -> {
+                            VirtualChestMod.LOGGER.error("解码物品失败，槽位 {}: {}", slot, error);
+                        });
+                        if (optionalStack.isPresent()) {
+                            chest.setStack(slot, optionalStack.get());
+                        }
                     }
                 }
             }
-
-            // 遍历结束后再统一删除
-            for (String name : toDelete) {
-                data.deleteChest(name);
-                LOGGER.info("Public chest '{}' waiting time expired, auto-deleted.", name);
-            }
-        });
-
-        LOGGER.info("NS Virtual Chest initialized! Admin tag: 'nsvc_admin'");
+        }
+        return chest;
     }
 }
