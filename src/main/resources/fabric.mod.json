@@ -5,9 +5,9 @@
   "name": "New Super Virtual Chest",
   "description": "A server-side virtual chest mod with public/private permissions and delayed deletion.",
   "authors": [
-    "cebctadet"
+    "EarlyStage7717"
   ],
-  "license": "ARR",
+  "license": "Apache-2.0",
   "environment": "*",
   "entrypoints": {
     "main": [
