@@ -18,6 +18,9 @@ import net.minecraft.util.Formatting;
 
 import java.util.UUID;
 
+import net.minecraft.text.ClickEvent;
+import net.minecraft.text.Style;
+
 import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
 
@@ -38,6 +41,32 @@ public class VirtualChestCommand {
         return builder.buildFuture();
     };
 
+    // 帮助条目 -> 点击后填入聊天框的命令（末尾带空格，方便直接输参数）
+private static final java.util.Map<String, String> HELP_SUGGEST_MAP = java.util.Map.ofEntries(
+    // 新命令
+    java.util.Map.entry("nsvc.help.new.1", "/NSvc create "),
+    java.util.Map.entry("nsvc.help.new.2", "/NSvc pcreate "),
+    java.util.Map.entry("nsvc.help.new.3", "/NSvc open "),
+    java.util.Map.entry("nsvc.help.new.4", "/NSvc delete "),
+    java.util.Map.entry("nsvc.help.new.5", "/NSvc pdelete "),
+    java.util.Map.entry("nsvc.help.new.6", "/NSvc list"),
+    java.util.Map.entry("nsvc.help.new.7", "/NSvc list "),
+    java.util.Map.entry("nsvc.help.new.8", "/NSvc mlist"),
+    java.util.Map.entry("nsvc.help.new.9", "/NSvc players "),
+    java.util.Map.entry("nsvc.help.new.10", "/NSvc players  open "),
+    java.util.Map.entry("nsvc.help.new.11", "/NSvc players  delete "),
+    java.util.Map.entry("nsvc.help.new.12", "/NSvc players  create "),
+    java.util.Map.entry("nsvc.help.new.13", "/NSvc "),
+    java.util.Map.entry("nsvc.help.new.17", "/NSvc transfer "),
+    java.util.Map.entry("nsvc.help.new.18", "/NSvc players  transfer "),
+    // 旧命令
+    java.util.Map.entry("nsvc.help.old.1", "/NSvc  create "),
+    java.util.Map.entry("nsvc.help.old.2", "/NSvc  open "),
+    java.util.Map.entry("nsvc.help.old.3", "/NSvc  delete "),
+    java.util.Map.entry("nsvc.help.old.4", "/NSvc  list")
+);
+
+
     public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
         dispatcher.register(literal("NSvc")
             // =========================================================
@@ -48,22 +77,20 @@ public class VirtualChestCommand {
             // =========================================================
             // help 系列
             // =========================================================
-            .then(literal("help").executes(ctx -> showHelp(ctx, "all")))
-            .then(literal("-help").executes(ctx -> showHelp(ctx, "all")))
-            .then(literal("--help").executes(ctx -> showHelp(ctx, "all")))
-            .then(literal("h").executes(ctx -> showHelp(ctx, "all")))
-            .then(literal("oldhelp").executes(ctx -> showHelp(ctx, "old")))
-            .then(literal("-oldhelp").executes(ctx -> showHelp(ctx, "old")))
-            .then(literal("--oldhelp").executes(ctx -> showHelp(ctx, "old")))
-            .then(literal("ohelp").executes(ctx -> showHelp(ctx, "old")))
-            .then(literal("-ohelp").executes(ctx -> showHelp(ctx, "old")))
-            .then(literal("--ohelp").executes(ctx -> showHelp(ctx, "old")))
-            .then(literal("newhelp").executes(ctx -> showHelp(ctx, "new")))
-            .then(literal("-newhelp").executes(ctx -> showHelp(ctx, "new")))
-            .then(literal("--newhelp").executes(ctx -> showHelp(ctx, "new")))
-            .then(literal("nhelp").executes(ctx -> showHelp(ctx, "new")))
-            .then(literal("-nhelp").executes(ctx -> showHelp(ctx, "new")))
-            .then(literal("--nhelp").executes(ctx -> showHelp(ctx, "new")))
+            // 隐藏式 help 入口：Tab 不提示，输入正确可执行
+// 必须放在所有 literal 子命令的最后，否则会挡住 create/open 等正常命令
+.then(argument("helpArg", StringArgumentType.word())
+    .executes(ctx -> {
+        String input = StringArgumentType.getString(ctx, "helpArg").toLowerCase();
+        return switch (input) {
+            case "help", "-help", "--help", "h" -> showHelp(ctx, "all");
+            case "oldhelp", "-oldhelp", "--oldhelp", "ohelp", "-ohelp", "--ohelp" -> showHelp(ctx, "old");
+            case "newhelp", "-newhelp", "--newhelp", "nhelp", "-nhelp", "--nhelp" -> showHelp(ctx, "new");
+            default -> 0; // 不匹配则静默失败，相当于命令不存在
+        };
+    })
+)
+
 
             // =========================================================
             // create / mcreate（给自己创建）
@@ -256,40 +283,81 @@ public class VirtualChestCommand {
     // ==================== help ====================
 
     private static int showHelp(CommandContext<ServerCommandSource> ctx, String type) {
-        ServerCommandSource source = ctx.getSource();
-        ServerPlayerEntity player = source.getPlayer();
-        String[] keys;
-        if ("old".equals(type)) {
-            keys = new String[]{
-                "nsvc.help.old.header",
-                "nsvc.help.old.1", "nsvc.help.old.2", "nsvc.help.old.3", "nsvc.help.old.4"
-            };
-        } else if ("new".equals(type)) {
-            keys = new String[]{
-                "nsvc.help.new.header",
-                "nsvc.help.new.1", "nsvc.help.new.2", "nsvc.help.new.3", "nsvc.help.new.4",
-                "nsvc.help.new.5", "nsvc.help.new.6", "nsvc.help.new.7", "nsvc.help.new.8",
-                "nsvc.help.new.9", "nsvc.help.new.10", "nsvc.help.new.11", "nsvc.help.new.12",
-                "nsvc.help.new.13", "nsvc.help.new.14", "nsvc.help.new.15", "nsvc.help.new.16",
-                "nsvc.help.new.17", "nsvc.help.new.18"
-            };
-        } else {
-            keys = new String[]{
-                "nsvc.help.new.header",
-                "nsvc.help.new.1", "nsvc.help.new.2", "nsvc.help.new.3", "nsvc.help.new.4",
-                "nsvc.help.new.5", "nsvc.help.new.6", "nsvc.help.new.7", "nsvc.help.new.8",
-                "nsvc.help.new.9", "nsvc.help.new.10", "nsvc.help.new.11", "nsvc.help.new.12",
-                "nsvc.help.new.13", "nsvc.help.new.14", "nsvc.help.new.15", "nsvc.help.new.16",
-                "nsvc.help.new.17", "nsvc.help.new.18",
-                "nsvc.help.old.header",
-                "nsvc.help.old.1", "nsvc.help.old.2", "nsvc.help.old.3", "nsvc.help.old.4"
-            };
-        }
-        for (String k : keys) {
-            source.sendFeedback(() -> I18n.translate(player, k).copy().formatted(Formatting.GRAY), false);
-        }
-        return 1;
+    ServerCommandSource source = ctx.getSource();
+    ServerPlayerEntity player = source.getPlayer();
+    String[] keys;
+
+    if ("old".equals(type)) {
+        keys = new String[]{
+            "nsvc.help.old.header",
+            "nsvc.help.old.1", "nsvc.help.old.2", "nsvc.help.old.3", "nsvc.help.old.4"
+        };
+    } else if ("new".equals(type)) {
+        keys = new String[]{
+            "nsvc.help.new.header",
+            "nsvc.help.new.1", "nsvc.help.new.2", "nsvc.help.new.3", "nsvc.help.new.4",
+            "nsvc.help.new.5", "nsvc.help.new.6", "nsvc.help.new.7", "nsvc.help.new.8",
+            "nsvc.help.new.9", "nsvc.help.new.10", "nsvc.help.new.11", "nsvc.help.new.12",
+            "nsvc.help.new.13", "nsvc.help.new.14", "nsvc.help.new.15", "nsvc.help.new.16",
+            "nsvc.help.new.17", "nsvc.help.new.18"
+        };
+    } else {
+        keys = new String[]{
+            "nsvc.help.new.header",
+            "nsvc.help.new.1", "nsvc.help.new.2", "nsvc.help.new.3", "nsvc.help.new.4",
+            "nsvc.help.new.5", "nsvc.help.new.6", "nsvc.help.new.7", "nsvc.help.new.8",
+            "nsvc.help.new.9", "nsvc.help.new.10", "nsvc.help.new.11", "nsvc.help.new.12",
+            "nsvc.help.new.13", "nsvc.help.new.14", "nsvc.help.new.15", "nsvc.help.new.16",
+            "nsvc.help.new.17", "nsvc.help.new.18",
+            "nsvc.help.old.header",
+            "nsvc.help.old.1", "nsvc.help.old.2", "nsvc.help.old.3", "nsvc.help.old.4"
+        };
     }
+
+    for (String k : keys) {
+        Text lineText;
+        String rawLine = I18n.translate(player, k).getString();
+        String suggestCmd = HELP_SUGGEST_MAP.getOrDefault(k, "");
+
+        // 标题行：直接金色显示，不加点击
+        if (k.endsWith(".header")) {
+            lineText = I18n.translate(player, k).copy().formatted(Formatting.GOLD);
+        }
+        // 有对应命令的行：拆分命令和描述，命令部分可点击
+        else if (!suggestCmd.isEmpty()) {
+            // 按 " - " 拆分命令部分和描述部分
+            String[] parts = rawLine.split(" - ", 2);
+            String cmdPart = parts[0];
+            String descPart = parts.length > 1 ? " - " + parts[1] : "";
+
+            // 命令文本：白色+下划线+点击填充
+Text cmdText = Text.literal(cmdPart)
+    .formatted(Formatting.WHITE)
+    .styled(style -> style
+        .withUnderline(true)
+        .withClickEvent(new ClickEvent.SuggestCommand(suggestCmd))
+    );
+
+
+
+            // 描述文本：灰色
+            Text descText = Text.literal(descPart).formatted(Formatting.GRAY);
+
+            // 拼接整行
+            lineText = Text.empty().append(cmdText).append(descText);
+        }
+        // 其他无对应命令的行：普通灰色
+        else {
+            lineText = I18n.translate(player, k).copy().formatted(Formatting.GRAY);
+        }
+
+        Text finalLine = lineText;
+        source.sendFeedback(() -> finalLine, false);
+    }
+
+    return 1;
+}
+
 
     // ==================== create ====================
 
