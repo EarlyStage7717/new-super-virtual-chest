@@ -1,13 +1,22 @@
 {
   "schemaVersion": 1,
   "id": "nsvirtualchest",
-  "version": "0.9.3TEST+mc1.21.11",
+  "version": "0.9.3test1+mc1.21.11",
   "name": "New Super Virtual Chest",
   "description": "A server-side virtual chest mod with public/private permissions and delayed deletion.",
   "authors": [
+    "Acdex",
+    "TlinpoT",
+    "Cloud Middle Fish",
     "EarlyStage7717"
   ],
+  "contact": {
+    "homepage": "https://modrinth.com/plugin/new-super-virtual-chest",
+    "sources": "https://github.com/EarlyStage7717/New-Super-Virtual-Chest",
+    "issues": "https://github.com/EarlyStage7717/New-Super-Virtual-Chest/issues"
+  },
   "license": "Apache-2.0",
+  "icon": "assets/nsvirtualchest/icon.png",
   "environment": "*",
   "entrypoints": {
     "main": [
@@ -16,8 +25,17 @@
   },
   "depends": {
     "fabricloader": ">=0.15.5",
-    "minecraft": "1.21.11",
-    "java": ">=21",
-    "fabric-api": "*"
+    "minecraft": ["1.21.11"],
+    "java": ">=25",
+    "fabric-api": ">=0.141.1"
+  },
+  "custom": {
+    "modmenu": {
+      "links": {
+        "modmenu.modrinth": "https://modrinth.com/plugin/new-super-virtual-chest",
+        "modmenu.mcmod": "https://www.mcmod.cn/class/27467.html"
+      },
+      "badges": []
+    }
   }
 }
